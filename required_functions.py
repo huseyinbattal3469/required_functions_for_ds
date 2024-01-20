@@ -537,7 +537,24 @@ def roc_auc_score_multiclass(y_true, y_pred, average="macro"):
     return roc_auc_dict
 
 
-def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "roc_auc"], is_classifier=True):
+def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "roc_auc"], is_classifier=True, random_state = 40):
+    from catboost import CatBoostClassifier
+    from xgboost import XGBClassifier
+    from lightgbm import LGBMClassifier
+
+    from sklearn.svm import SVC, LinearSVC, NuSVC
+    from sklearn.gaussian_process import GaussianProcessClassifier
+    from sklearn.tree import DecisionTreeClassifier, ExtraTreeClassifier
+    from sklearn.cluster import KMeans
+    from sklearn.naive_bayes import CategoricalNB
+    from sklearn.neighbors import KNeighborsClassifier, RadiusNeighborsClassifier
+    from sklearn.ensemble import (RandomForestClassifier,
+                                  BaggingClassifier,
+                                  GradientBoostingClassifier,
+                                  AdaBoostClassifier,
+                                  HistGradientBoostingClassifier,
+                                  StackingClassifier)
+    from sklearn.linear_model import LogisticRegression, SGDClassifier, ElasticNet, Ridge, Lasso
     """
     :param X:
     :param y:
@@ -626,17 +643,22 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
             "GBM": GradientBoostingRegressor(),
             "HIST": HistGradientBoostingRegressor(),
             "Adaboost": AdaBoostRegressor(),
-            "XGBoost": XGBRegressor(use_label_encoder=False, eval_metric='logloss'),
-            "LightGBM": LGBMRegressor(verbose=-1),  # HistGradientBoostingClassifier
-            "Catboost": CatBoostRegressor(verbose=False)
+            "XGBoost": XGBRegressor(use_label_encoder=False, device="cuda"),
+            "LightGBM": LGBMRegressor(verbose=-1),
+            "Catboost": CatBoostRegressor(verbose=False, task_type="GPU", devices='0:1')
         }
 
     for name, model in models.items():
         print(f"################## {name} ################## ")
-        for score_param in scoring:
-            cv_results = cross_validate(model, X, y, cv=cv, scoring=score_param)
-            print(f"{score_param}: {round(cv_results['test_score'].mean(), 4)} ({name}) ")
-
+        try:
+            for score_param in scoring:
+                X_train, X_test, y_train, y_test = train_test_split(X,y,test_size=.20, random_state=random_state)
+                cv_results = cross_validate(model, X_train, y_train, cv=cv, scoring=score_param)
+                print(f"{score_param}: {abs(round(cv_results['test_score'].mean(), 4))} ({name}) ")
+        except ValueError as e:
+            print("Fit process has failed. There is might be NaN values...")
+            print(e)
+            continue
         print()
 
 
