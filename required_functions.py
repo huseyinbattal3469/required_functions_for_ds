@@ -2,7 +2,7 @@ import joblib
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn
+import seaborn as sns
 import time
 
 import warnings
