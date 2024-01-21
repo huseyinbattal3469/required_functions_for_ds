@@ -23,7 +23,8 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import get_scorer_names
 from sklearn.ensemble import (RandomForestClassifier, RandomForestRegressor, GradientBoostingClassifier,
                               GradientBoostingRegressor, VotingClassifier, VotingRegressor, AdaBoostClassifier,
-                              AdaBoostRegressor, HistGradientBoostingClassifier, HistGradientBoostingRegressor)
+                              AdaBoostRegressor, HistGradientBoostingClassifier, HistGradientBoostingRegressor,
+                              BaggingClassifier, BaggingRegressor)
 
 from sklearn.linear_model import (LinearRegression, LogisticRegression, Ridge, Lasso, ElasticNet, SGDRegressor,
                                   SGDClassifier)
@@ -38,7 +39,8 @@ from sklearn.svm import SVC, SVR, NuSVC, NuSVR, LinearSVC, LinearSVR
 from sklearn.neighbors import (KNeighborsClassifier, KNeighborsRegressor, NearestCentroid, RadiusNeighborsClassifier,
                                RadiusNeighborsRegressor)
 
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor, export_graphviz, export_text
+from sklearn.tree import (DecisionTreeClassifier, DecisionTreeRegressor, ExtraTreeClassifier, ExtraTreeRegressor,
+                          export_graphviz, export_text)
 
 from xgboost import XGBClassifier, XGBRegressor
 from lightgbm import LGBMClassifier, LGBMRegressor
@@ -56,6 +58,7 @@ from sklearn.preprocessing import MinMaxScaler, LabelEncoder, StandardScaler, Ro
 ############# Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+
 warnings.filterwarnings("ignore")
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -82,7 +85,7 @@ def check_df(dataframe: pd.DataFrame, head=5):
     print('##################### NA #####################')
     print(dataframe.isnull().sum())
     print('##################### Quantiles #####################')
-    print(dataframe.describe([0.01, 0.05,0.25, 0.50, 0.75, 0.95, 0.99]).T)
+    print(dataframe.describe([0.01, 0.05, 0.25, 0.50, 0.75, 0.95, 0.99]).T)
 
 
 def grab_col_names(dataframe: pd.DataFrame, cat_th=10, car_th=20):
@@ -140,10 +143,11 @@ def cat_summary(dataframe: pd.DataFrame, categorical_col: str, plot=False):
         None
     """
     result_df = pd.DataFrame({categorical_col: dataframe[categorical_col].value_counts(),
-                        "Ratio": 100 * dataframe[categorical_col].value_counts() / len(dataframe)})
+                              "Ratio": 100 * dataframe[categorical_col].value_counts() / len(dataframe)})
     result_null_df = 100 * dataframe[categorical_col].isnull().sum() / len(dataframe)
     print(result_df)
-    print(f"Not Null Count: {dataframe[categorical_col].notnull().sum()}, Perc(%): {round(result_df['Ratio'].sum(), 2)}")
+    print(
+        f"Not Null Count: {dataframe[categorical_col].notnull().sum()}, Perc(%): {round(result_df['Ratio'].sum(), 2)}")
     print(f"Null Count: {dataframe[categorical_col].isnull().sum()}, Perc(%): {round(result_null_df, 2)}")
     print("#####################################")
     if plot:
@@ -186,7 +190,8 @@ def target_summary_with_cat(dataframe: pd.DataFrame, target: str, categorical_co
         plt.show(block=True)
 
 
-def target_summary_with_num(dataframe: pd.DataFrame, target: str, numerical_col: str, plot=False, method:str="class", hue = None):
+def target_summary_with_num(dataframe: pd.DataFrame, target: str, numerical_col: str, plot=False, method: str = "class",
+                            hue=None):
     """
     :param dataframe: pandas.DataFrame
     :param target: string
@@ -199,8 +204,8 @@ def target_summary_with_num(dataframe: pd.DataFrame, target: str, numerical_col:
         None
     """
     if method == "regr" and plot:
-        #plt.figure(figsize=(10, 6))
-        sns.lmplot(x=target, y=numerical_col, data=dataframe, hue=hue,  height=6, aspect=1.5)
+        # plt.figure(figsize=(10, 6))
+        sns.lmplot(x=target, y=numerical_col, data=dataframe, hue=hue, height=6, aspect=1.5)
         plt.show(block=True)
     elif method == "class":
         print(pd.DataFrame({numerical_col + '_mean': dataframe.groupby(target)[numerical_col].mean()}), end='\n\n\n')
@@ -378,7 +383,7 @@ def missing_vs_target(dataframe: pd.DataFrame, target: str, na_columns: list):
     na_flags = temp_df.loc[:, temp_df.columns.str.contains("_NA_")].columns
     for col in na_flags:
         print(pd.DataFrame({"TARGET_MEAN": temp_df.groupby(col)[target].mean(),
-                            "TARGET_MEDIAN":temp_df.groupby(col)[target].median(),
+                            "TARGET_MEDIAN": temp_df.groupby(col)[target].median(),
                             "Count": temp_df.groupby(col)[target].count()}), end="\n")
 
 
@@ -537,24 +542,8 @@ def roc_auc_score_multiclass(y_true, y_pred, average="macro"):
     return roc_auc_dict
 
 
-def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "roc_auc"], is_classifier=True, random_state = 40):
-    from catboost import CatBoostClassifier
-    from xgboost import XGBClassifier
-    from lightgbm import LGBMClassifier
-
-    from sklearn.svm import SVC, LinearSVC, NuSVC
-    from sklearn.gaussian_process import GaussianProcessClassifier
-    from sklearn.tree import DecisionTreeClassifier, ExtraTreeClassifier
-    from sklearn.cluster import KMeans
-    from sklearn.naive_bayes import CategoricalNB
-    from sklearn.neighbors import KNeighborsClassifier, RadiusNeighborsClassifier
-    from sklearn.ensemble import (RandomForestClassifier,
-                                  BaggingClassifier,
-                                  GradientBoostingClassifier,
-                                  AdaBoostClassifier,
-                                  HistGradientBoostingClassifier,
-                                  StackingClassifier)
-    from sklearn.linear_model import LogisticRegression, SGDClassifier, ElasticNet, Ridge, Lasso
+def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "roc_auc"], is_classifier=True,
+                random_state=40):
     """
     :param X:
     :param y:
@@ -581,15 +570,15 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
             # "MNB":MultinomialNB(), Metin saymak için ideal (?)
             # "CNB":ComplementNB(),
             "BNB": BernoulliNB(),
-            "CATNB":CategoricalNB(),
+            "CATNB": CategoricalNB(),
             # Gaussian Process
             # "GPC": GaussianProcessClassifier(),
             # Linear Model
             "LR": LogisticRegression(),
             "SGD": SGDClassifier(),
-            "RID":Ridge(), # Regresyon Modeli - sürekli sayılar için
+            "RID": Ridge(),  # Regresyon Modeli - sürekli sayılar için
             "LAS": Lasso(),  # Regresyon Modeli
-            "ENET":ElasticNet(), # Regresyon Modeli
+            "ENET": ElasticNet(),  # Regresyon Modeli
             # Support Vector Machines
             "SVC": SVC(),
             # "NUSVC": NuSVC(),
@@ -603,7 +592,7 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
             "EXTR": ExtraTreeClassifier(),
             # Ensemble
             "RF": RandomForestClassifier(),
-            "BAG":BaggingClassifier(),
+            "BAG": BaggingClassifier(),
             "GBM": GradientBoostingClassifier(),
             "HIST": HistGradientBoostingClassifier(),
             "Adaboost": AdaBoostClassifier(),
@@ -634,12 +623,14 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
             "LSVR": LinearSVR(),
             # Neighbors
             "KNN": KNeighborsRegressor(),
-            #"NECEN": NearestCentroid(),
+            # "NECEN": NearestCentroid(),
             # "RANER": RadiusNeighborsRegressor(),
             # Tree
             "CART": DecisionTreeRegressor(),
+            "EXTR": ExtraTreeRegressor(),
             # Ensemble
             "RF": RandomForestRegressor(),
+            "BAG": BaggingRegressor(),
             "GBM": GradientBoostingRegressor(),
             "HIST": HistGradientBoostingRegressor(),
             "Adaboost": AdaBoostRegressor(),
@@ -652,17 +643,18 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
         print(f"################## {name} ################## ")
         try:
             for score_param in scoring:
-                X_train, X_test, y_train, y_test = train_test_split(X,y,test_size=.20, random_state=random_state)
+                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.20, random_state=random_state)
                 cv_results = cross_validate(model, X_train, y_train, cv=cv, scoring=score_param)
                 print(f"{score_param}: {abs(round(cv_results['test_score'].mean(), 4))} ({name}) ")
         except ValueError as e:
             print("Fit process has failed. There is might be NaN values...")
-            print(e)
+            # print(e)
             continue
         print()
 
 
-def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=True, is_grid_search=True, random_state=40):
+def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=True, is_grid_search=True,
+                                random_state=40):
     """
     :param X:
     :param y:
@@ -759,7 +751,7 @@ def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=Tru
 
     lsv_params = {
         "C": [0.01, 0.1, 1, 10, 100],
-        "loss": ['squared_hinge'], # 'hinge',
+        "loss": ['squared_hinge'],  # 'hinge',
         "penalty": ['l2', 'l1'],
         "multi_class": ['ovr', 'crammer_singer'],
         "max_iter": [10000, 20000, 50000, 100000]
@@ -911,7 +903,7 @@ def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=Tru
             s_best = RandomizedSearchCV(model, params, cv=cv, n_jobs=-1, verbose=False).fit(X, y)
         final_model = model.set_params(**s_best.best_params_)
 
-        X_train, X_test, y_train, y_test = train_test_split(X, y,test_size=.20, random_state=random_state)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.20, random_state=random_state)
         cv_results = cross_validate(final_model, X_train, y_train, cv=cv, scoring=scoring)
         print(f"{scoring} (After): {round(cv_results['test_score'].mean(), 4)}")
         print(f"{name} best params: {s_best.best_params_}", end="\n\n")
@@ -945,7 +937,7 @@ def base_multiclass_models(X, y, cv=5,
         "BNB": BernoulliNB(),
         # "CATNB":CategoricalNB(),
         # Gaussian Process
-        #"GPC": GaussianProcessClassifier(),
+        # "GPC": GaussianProcessClassifier(),
         # Linear Model
         "LR": LogisticRegression(),
         "SGD": SGDClassifier(),
@@ -962,8 +954,10 @@ def base_multiclass_models(X, y, cv=5,
         # "RANEC":RadiusNeighborsClassifier(),
         # Tree
         "CART": DecisionTreeClassifier(),
+        "EXTR": ExtraTreeClassifier(),
         # Ensemble
         "RF": RandomForestClassifier(),
+        "BAG": BaggingClassifier(),
         "GBM": GradientBoostingClassifier(),
         "HIST": HistGradientBoostingClassifier(),
         "Adaboost": AdaBoostClassifier(),
@@ -1196,7 +1190,8 @@ def hyperparameter_multiclass_optimization(X, y, cv=5, scoring="roc_auc_ovr", is
     return best_models
 
 
-def voting_model(best_models: dict, X, y, cv=5, is_classifier=True, is_multiclass=False, voting_type="soft", show_error=False):
+def voting_model(best_models: dict, X, y, cv=5, is_classifier=True, is_multiclass=False, voting_type="soft",
+                 show_error=False):
     """
     :param best_models: dictionary
     :param X:
@@ -1237,14 +1232,15 @@ def voting_model(best_models: dict, X, y, cv=5, is_classifier=True, is_multiclas
     if is_multiclass:
         cv_results = cross_validate(voting, X, y, cv=cv,
                                     scoring=["accuracy", "precision_macro", "recall_macro", "f1_macro", "roc_auc_ovo",
-                                             "roc_auc_ovr"], error_score= "raise" if show_error else np.nan)
+                                             "roc_auc_ovr"], error_score="raise" if show_error else np.nan)
         print(f"Accuracy: {cv_results['test_accuracy'].mean()}")
         print(f"Precision Macro: {cv_results['test_precision_macro'].mean()}")
         print(f"Recall Macro: {cv_results['test_recall_macro'].mean()}")
         print(f"F1Score Macro: {cv_results['test_f1_macro'].mean()}")
         print(f"ROC_AUC Ovr: {cv_results['test_roc_auc_ovr'].mean()}")
     else:
-        cv_results = cross_validate(voting, X, y, cv=cv, scoring=["neg_mean_absolute_error", "neg_mean_squared_error", "neg_root_mean_squared_error", "r2"]
+        cv_results = cross_validate(voting, X, y, cv=cv, scoring=["neg_mean_absolute_error", "neg_mean_squared_error",
+                                                                  "neg_root_mean_squared_error", "r2"]
                                     , error_score="raise" if show_error else np.nan)
         print(f"mean_absolute_error: {abs(cv_results['test_neg_mean_absolute_error'].mean())}")
         print(f"mean_squared_error: {abs(cv_results['test_neg_mean_squared_error'].mean())}")
