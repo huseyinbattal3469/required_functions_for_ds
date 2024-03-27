@@ -42,6 +42,8 @@ from sklearn.neighbors import (KNeighborsClassifier, KNeighborsRegressor, Neares
 from sklearn.tree import (DecisionTreeClassifier, DecisionTreeRegressor, ExtraTreeClassifier, ExtraTreeRegressor,
                           export_graphviz, export_text)
 
+from sklearn.neural_network import MLPClassifier, MLPRegressor, BernoulliRBM
+
 from xgboost import XGBClassifier, XGBRegressor
 from lightgbm import LGBMClassifier, LGBMRegressor
 from catboost import CatBoostClassifier, CatBoostRegressor
@@ -461,10 +463,12 @@ def rare_analyser(dataframe: pd.DataFrame, target: str, cat_cols: list):
     :param cat_cols: list
     """
     for col in cat_cols:
+        print("-" * 20)
         print(col, ":", len(dataframe[col].value_counts()))
         print(pd.DataFrame({"COUNT": dataframe[col].value_counts(),
                             "Ratio": 100 * dataframe[col].value_counts() / len(dataframe),
                             "TARGET_MEAN": dataframe.groupby(col)[target].mean()}), end="\n\n")
+        print("-" * 20)
 
 
 def rare_encoder(dataframe: pd.DataFrame, rare_perc):
@@ -597,8 +601,10 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
             "HIST": HistGradientBoostingClassifier(),
             "Adaboost": AdaBoostClassifier(),
             "XGBoost": XGBClassifier(use_label_encoder=False, device="cuda"),
-            "LightGBM": LGBMClassifier(verbose=-1),  # HistGradientBoostingClassifier
-            "Catboost": CatBoostClassifier(verbose=False, task_type="GPU", devices='0:1')
+            "LightGBM": LGBMClassifier(verbose=-1),
+            "Catboost": CatBoostClassifier(verbose=False, task_type="GPU", devices='0:1'),
+            "MLP": MLPClassifier(),
+
         }
     else:
         models = {
@@ -636,7 +642,8 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
             "Adaboost": AdaBoostRegressor(),
             "XGBoost": XGBRegressor(use_label_encoder=False, device="cuda"),
             "LightGBM": LGBMRegressor(verbose=-1),
-            "Catboost": CatBoostRegressor(verbose=False, task_type="GPU", devices='0:1')
+            "Catboost": CatBoostRegressor(verbose=False, task_type="GPU", devices='0:1'),
+            "MLP": MLPRegressor()
         }
 
     for name, model in models.items():
@@ -644,7 +651,7 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
         try:
             for score_param in scoring:
                 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.20, random_state=random_state)
-                cv_results = cross_validate(model, X_train, y_train, cv=cv, scoring=score_param)
+                cv_results = cross_validate(model, X_train, y_train, cv=cv, scoring=score_param, error_score="raise")
                 print(f"{score_param}: {abs(round(cv_results['test_score'].mean(), 4))} ({name}) ")
         except ValueError as e:
             print("Fit process has failed. There is might be NaN values...")
@@ -818,6 +825,13 @@ def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=Tru
         'max_leaf_nodes': [2, 3, None],
         'n_estimators': [100, 200, 250, 300, 500, 1000]}
 
+    mlp_params = {'hidden_layer_sizes': [(100,), (100, 50), (100, 50, 20)],
+                  'activation': ["relu", "tanh", "logistic"],
+                  'alpha': [0.0001, 0.01, 0.1],
+                  'solver': ["lbfgs", "sgd", "adam"],
+                  'learning_rate_init': [0.001, 0.01, 0.1],
+                  'max_iter': [50, 100, 200, 500]
+                  }
     if is_classifier:
         models = [
             # Naive Bayes
@@ -852,7 +866,9 @@ def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=Tru
             ("ADABoost", AdaBoostClassifier(), ada_params),
             ("XGBoost", XGBClassifier(use_label_encoder=False, eval_metric='logloss'), xboost_params),
             ("LightGBM", LGBMClassifier(verbose=-1), lightgbm_params),
-            ("Catboost", CatBoostClassifier(), cat_params)
+            ("Catboost", CatBoostClassifier(), cat_params),
+            # Neural Networks
+            ("MLP", MLPClassifier(), mlp_params)
         ]
 
     else:
@@ -888,7 +904,8 @@ def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=Tru
             ("Adaboost", AdaBoostRegressor(), ada_params),
             ("XGBoost", XGBRegressor(use_label_encoder=False), xboost_params),
             ("LightGBM", LGBMRegressor(verbose=-1), lightgbm_params),
-            ("Catboost", CatBoostRegressor(verbose=False), cat_params)
+            ("Catboost", CatBoostRegressor(verbose=False), cat_params),
+            ("MLP", MLPRegressor(), mlp_params)
         ]
 
     best_models = {}
@@ -963,7 +980,9 @@ def base_multiclass_models(X, y, cv=5,
         "Adaboost": AdaBoostClassifier(),
         "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
         "LightGBM": LGBMClassifier(verbose=-1),  # HistGradientBoostingClassifier
-        "Catboost": CatBoostClassifier(verbose=False)
+        "Catboost": CatBoostClassifier(verbose=False),
+        # Neural Networks
+        "MLP": MLPClassifier()
     }
     for name, model in models.items():
         print(f"################## {name} ################## ")
@@ -1136,6 +1155,14 @@ def hyperparameter_multiclass_optimization(X, y, cv=5, scoring="roc_auc_ovr", is
         'max_leaf_nodes': [2, 3, None],
         'n_estimators': [100, 200, 250, 300, 500, 1000]}
 
+    mlp_params = {'hidden_layer_sizes': [(100,), (100, 50), (100, 50, 20)],
+                  'activation': ["relu", "tanh", "logistic"],
+                  'alpha': [0.0001, 0.01, 0.1],
+                  'solver': ["lbfgs", "sgd", "adam"],
+                  'learning_rate_init': [0.001, 0.01, 0.1],
+                  'max_iter': [50, 100, 200, 500]
+                  }
+
     models = [
         # Naive Bayes
         ("GNB", GaussianNB(), gnb_params),
@@ -1169,7 +1196,8 @@ def hyperparameter_multiclass_optimization(X, y, cv=5, scoring="roc_auc_ovr", is
         ("ADABoost", AdaBoostClassifier(), ada_params),
         ("XGBoost", XGBClassifier(use_label_encoder=False), xboost_params),
         ("LightGBM", LGBMClassifier(verbose=-1), lightgbm_params),
-        ("Catboost", CatBoostClassifier(verbose=False), cat_params)
+        ("Catboost", CatBoostClassifier(verbose=False), cat_params),
+        ("MLP", MLPClassifier(), mlp_params)
     ]
     best_models = {}
     for name, model, params in models:
