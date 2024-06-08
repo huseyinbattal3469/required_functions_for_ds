@@ -463,13 +463,12 @@ def rare_analyser(dataframe: pd.DataFrame, target: str, cat_cols: list):
     :param cat_cols: list
     """
     for col in cat_cols:
-        print("-" * 20)
+        print("-"*20)
         print(col, ":", len(dataframe[col].value_counts()))
         print(pd.DataFrame({"COUNT": dataframe[col].value_counts(),
                             "Ratio": 100 * dataframe[col].value_counts() / len(dataframe),
                             "TARGET_MEAN": dataframe.groupby(col)[target].mean()}), end="\n\n")
-        print("-" * 20)
-
+        print("-"*20)
 
 def rare_encoder(dataframe: pd.DataFrame, rare_perc):
     """
@@ -604,6 +603,7 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
             "LightGBM": LGBMClassifier(verbose=-1),
             "Catboost": CatBoostClassifier(verbose=False, task_type="GPU", devices='0:1'),
             "MLP": MLPClassifier(),
+             
 
         }
     else:
@@ -643,7 +643,7 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
             "XGBoost": XGBRegressor(use_label_encoder=False, device="cuda"),
             "LightGBM": LGBMRegressor(verbose=-1),
             "Catboost": CatBoostRegressor(verbose=False, task_type="GPU", devices='0:1'),
-            "MLP": MLPRegressor()
+            "MLP":MLPRegressor()
         }
 
     for name, model in models.items():
@@ -824,13 +824,13 @@ def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=Tru
         'max_features': [2, 3, 4, None],
         'max_leaf_nodes': [2, 3, None],
         'n_estimators': [100, 200, 250, 300, 500, 1000]}
-
-    mlp_params = {'hidden_layer_sizes': [(100,), (100, 50), (100, 50, 20)],
-                  'activation': ["relu", "tanh", "logistic"],
-                  'alpha': [0.0001, 0.01, 0.1],
-                  'solver': ["lbfgs", "sgd", "adam"],
-                  'learning_rate_init': [0.001, 0.01, 0.1],
-                  'max_iter': [50, 100, 200, 500]
+    
+    mlp_params = {'hidden_layer_sizes':[(100,), (100, 50), (100, 50, 20)],
+                  'activation':["relu", "tanh","logistic"],
+                  'alpha':[0.0001, 0.01, 0.1],
+                  'solver':["lbfgs", "sgd", "adam"],
+                  'learning_rate_init':[0.001, 0.01, 0.1],
+                  'max_iter':[50, 100, 200, 500]
                   }
     if is_classifier:
         models = [
@@ -868,7 +868,7 @@ def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=Tru
             ("LightGBM", LGBMClassifier(verbose=-1), lightgbm_params),
             ("Catboost", CatBoostClassifier(), cat_params),
             # Neural Networks
-            ("MLP", MLPClassifier(), mlp_params)
+            ("MLP",MLPClassifier(),mlp_params)
         ]
 
     else:
@@ -929,16 +929,14 @@ def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=Tru
     return best_models
 
 
-def base_multiclass_models(X, y, cv=5,
-                           scoring=["accuracy", "precision_macro", "recall_macro", "f1_macro", "roc_auc_ovo",
-                                    "roc_auc_ovr"]):
+def base_multiclass_models(X, y, cv=5, scoring=["accuracy", "precision_macro", "recall_macro", "f1_macro", "roc_auc_ovo", "roc_auc_ovr"]):
     """
     :param X:
     :param y:
     :param cv: int
         5
     :param scoring:
-        ["precision_macro","recall_macro","f1_macro","roc_auc_ovr"]
+        ["accuracy", "precision_macro", "recall_macro", "f1_macro", "roc_auc_ovo", "roc_auc_ovr"]
         https://scikit-learn.org/stable/modules/model_evaluation.html#scoring
     """
     warnings.filterwarnings("ignore", category=FutureWarning)
@@ -949,26 +947,21 @@ def base_multiclass_models(X, y, cv=5,
     models = {
         # Naive Bayes
         "GNB": GaussianNB(),
-        # "MNB":MultinomialNB(), Metin saymak için ideal (?)
-        # "CNB":ComplementNB(),
-        "BNB": BernoulliNB(),
-        # "CATNB":CategoricalNB(),
+        # "MNB":MultinomialNB(), # not usable with negative values
+        # "CNB":ComplementNB(), # not usable with negative values
+        # "BNB": BernoulliNB(), # not usable with negative values
+        # "CATNB":CategoricalNB(), # not usable with negative values
         # Gaussian Process
-        # "GPC": GaussianProcessClassifier(),
+        # "GPC": GaussianProcessClassifier(), # takes too long, not useful
         # Linear Model
         "LR": LogisticRegression(),
         "SGD": SGDClassifier(),
-        # "RID":Ridge(), # Regresyon Modeli - sürekli sayılar için
-        # "LAS":Lasso(), # Regresyon Modeli
-        # "ENET":ElasticNet(), # Regresyon Modeli
         # Support Vector Machines
-        # "SVC": SVC(probability=True),
-        # "NUSVC": NuSVC(probability=True),
-        # "LSVC": LinearSVC(max_iter=8000),
+        # "SVC": SVC(probability=True),  # takes too long sometimes
+        # "NUSVC": NuSVC(probability=True), # takes too long sometimes
+        "LSVC": LinearSVC(),
         # Neighbors
         "KNN": KNeighborsClassifier(),
-        # "NECEN": NearestCentroid(),
-        # "RANEC":RadiusNeighborsClassifier(),
         # Tree
         "CART": DecisionTreeClassifier(),
         "EXTR": ExtraTreeClassifier(),
@@ -978,9 +971,9 @@ def base_multiclass_models(X, y, cv=5,
         "GBM": GradientBoostingClassifier(),
         "HIST": HistGradientBoostingClassifier(),
         "Adaboost": AdaBoostClassifier(),
-        "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
-        "LightGBM": LGBMClassifier(verbose=-1),  # HistGradientBoostingClassifier
-        "Catboost": CatBoostClassifier(verbose=False),
+        "XGBoost": XGBClassifier(use_label_encoder=False, device="cuda"),
+        "LightGBM": LGBMClassifier(verbose=-1, device="gpu"), 
+        "Catboost": CatBoostClassifier(verbose=False, devices="gpu"),
         # Neural Networks
         "MLP": MLPClassifier()
     }
@@ -1154,14 +1147,14 @@ def hyperparameter_multiclass_optimization(X, y, cv=5, scoring="roc_auc_ovr", is
         'max_features': [2, 3, 4, None],
         'max_leaf_nodes': [2, 3, None],
         'n_estimators': [100, 200, 250, 300, 500, 1000]}
-
-    mlp_params = {'hidden_layer_sizes': [(100,), (100, 50), (100, 50, 20)],
-                  'activation': ["relu", "tanh", "logistic"],
-                  'alpha': [0.0001, 0.01, 0.1],
-                  'solver': ["lbfgs", "sgd", "adam"],
-                  'learning_rate_init': [0.001, 0.01, 0.1],
-                  'max_iter': [50, 100, 200, 500]
-                  }
+    
+    mlp_params = {'hidden_layer_sizes':[(100,), (100, 50), (100, 50, 20)],
+                'activation':["relu", "tanh","logistic"],
+                'alpha':[0.0001, 0.01, 0.1],
+                'solver':["lbfgs", "sgd", "adam"],
+                'learning_rate_init':[0.001, 0.01, 0.1],
+                'max_iter':[50, 100, 200, 500]
+                } 
 
     models = [
         # Naive Bayes
@@ -1197,7 +1190,7 @@ def hyperparameter_multiclass_optimization(X, y, cv=5, scoring="roc_auc_ovr", is
         ("XGBoost", XGBClassifier(use_label_encoder=False), xboost_params),
         ("LightGBM", LGBMClassifier(verbose=-1), lightgbm_params),
         ("Catboost", CatBoostClassifier(verbose=False), cat_params),
-        ("MLP", MLPClassifier(), mlp_params)
+        ("MLP",MLPClassifier(),mlp_params)
     ]
     best_models = {}
     for name, model, params in models:
