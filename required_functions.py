@@ -545,8 +545,7 @@ def roc_auc_score_multiclass(y_true, y_pred, average="macro"):
     return roc_auc_dict
 
 
-def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "roc_auc"], is_classifier=True,
-                random_state=40):
+def _base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "roc_auc"], is_classifier=True, return_results=False):
     """
     :param X:
     :param y:
@@ -558,8 +557,9 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
          https://scikit-learn.org/stable/modules/model_evaluation.html#scoring
     :param is_classifier: boolean
         True
-    :param random_state: int
-        40
+    :param csv_result: boolean
+        False
+    :return: pandas.DataFrame
     """
     warnings.filterwarnings("ignore", category=FutureWarning)
     warnings.filterwarnings("ignore", category=UserWarning)
@@ -570,26 +570,23 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
         models = {
             # Naive Bayes
             "GNB": GaussianNB(),
-            # "MNB":MultinomialNB(), Metin saymak için ideal (?)
-            # "CNB":ComplementNB(),
+            # "MNB":MultinomialNB(), # not usable with negative values
+            # "CNB":ComplementNB(), # not usable with negative values
             "BNB": BernoulliNB(),
-            "CATNB": CategoricalNB(),
+            # "CATNB": CategoricalNB(), # not usable with negative values
             # Gaussian Process
-            # "GPC": GaussianProcessClassifier(),
+            # "GPC": GaussianProcessClassifier(), # takes too long, not useful
             # Linear Model
             "LR": LogisticRegression(),
             "SGD": SGDClassifier(),
-            "RID": Ridge(),  # Regresyon Modeli - sürekli sayılar için
-            "LAS": Lasso(),  # Regresyon Modeli
-            "ENET": ElasticNet(),  # Regresyon Modeli
             # Support Vector Machines
             "SVC": SVC(),
-            # "NUSVC": NuSVC(),
+            # "NUSVC": NuSVC(), # for specific cases
             "LSVC": LinearSVC(),
             # Neighbors
             "KNN": KNeighborsClassifier(),
             # "NECEN": NearestCentroid(),
-            "RANEC": RadiusNeighborsClassifier(),
+            # "RANEC": RadiusNeighborsClassifier(), # not usable, sometimes does not find the nearest neighbors
             # Tree
             "CART": DecisionTreeClassifier(),
             "EXTR": ExtraTreeClassifier(),
@@ -600,7 +597,7 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
             "HIST": HistGradientBoostingClassifier(),
             "Adaboost": AdaBoostClassifier(),
             "XGBoost": XGBClassifier(use_label_encoder=False, device="cuda"),
-            "LightGBM": LGBMClassifier(verbose=-1),
+            "LightGBM": LGBMClassifier(verbose=-1, device="gpu"),
             "Catboost": CatBoostClassifier(verbose=False, task_type="GPU", devices='0:1'),
             "MLP": MLPClassifier(),
              
@@ -641,23 +638,147 @@ def base_models(X, y, cv=5, scoring=["accuracy", "precision", "recall", "f1", "r
             "HIST": HistGradientBoostingRegressor(),
             "Adaboost": AdaBoostRegressor(),
             "XGBoost": XGBRegressor(use_label_encoder=False, device="cuda"),
-            "LightGBM": LGBMRegressor(verbose=-1),
+            "LightGBM": LGBMRegressor(verbose=-1, device="gpu"),
             "Catboost": CatBoostRegressor(verbose=False, task_type="GPU", devices='0:1'),
             "MLP":MLPRegressor()
         }
-
+   
+    results_df = pd.DataFrame()
     for name, model in models.items():
         print(f"################## {name} ################## ")
         try:
             for score_param in scoring:
-                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.20, random_state=random_state)
-                cv_results = cross_validate(model, X_train, y_train, cv=cv, scoring=score_param, error_score="raise")
-                print(f"{score_param}: {abs(round(cv_results['test_score'].mean(), 4))} ({name}) ")
+                cv_results = cross_validate(model, X, y, cv=cv, scoring=score_param, error_score="raise")['test_score'].mean()
+                score = abs(round(cv_results, 4))
+                print(f"{score_param}: {score} ({name}) ")
+                results_df.loc[len(results_df), ["model", "scoring","result"]] = [name, f"{score_param}-{y.name}", score]
         except ValueError as e:
-            print("Fit process has failed. There is might be NaN values...")
-            # print(e)
-            continue
+            # print("Fit process has failed. There is might be NaN values...")
+            print(e)
+        
         print()
+    if return_results:
+        return results_df
+
+def base_models(X, y, cv=5, scoring=None, is_classifier=True, return_results=False, csv_result=False, file_name="results.csv"):
+    """
+    :param X: pd.DataFrame, features
+    :param y: pd.Series, target
+    :param cv: int, cross-validation splitting strategy
+    :param scoring: list, scoring metrics to use
+    :param is_classifier: boolean, if True use classifiers, else use regressors
+    :param return_results: boolean, if True return results DataFrame
+    :param csv_result: boolean, if True save results to CSV
+    :param file_name: str, file name for the CSV results
+    :return: pd.DataFrame, results DataFrame if return_results is True
+    """
+    if scoring is None:
+        scoring = ["accuracy", "precision", "recall", "f1", "roc_auc"] if is_classifier else ["neg_mean_squared_error", "neg_root_mean_squared_error", "neg_mean_absolute_error", "r2"]
+
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    warnings.filterwarnings("ignore", category=UserWarning)
+    warnings.filterwarnings("ignore", category=ConvergenceWarning)
+    warnings.filterwarnings("ignore", category=FitFailedWarning)
+
+    print("Base Models....")
+
+    classifiers = {
+        "GNB": GaussianNB(),
+        # "MNB": MultinomialNB(),  # not usable with negative values
+        # "CNB": ComplementNB(),  # not usable with negative values
+        "BNB": BernoulliNB(),
+        # "CATNB": CategoricalNB(),  # not usable with negative values
+        # Gaussian Process
+        # "GPC": GaussianProcessClassifier(),  # takes too long, not useful
+        # Linear Model
+        "LR": LogisticRegression(),
+        "SGD": SGDClassifier(),
+        # Support Vector Machines
+        "SVC": SVC(),
+        # "NUSVC": NuSVC(),  # for specific cases
+        "LSVC": LinearSVC(),
+        # Neighbors
+        "KNN": KNeighborsClassifier(),
+        # "NECEN": NearestCentroid(),
+        # "RANEC": RadiusNeighborsClassifier(),  # not usable, sometimes does not find the nearest neighbors
+        # Tree
+        "CART": DecisionTreeClassifier(),
+        "EXTR": ExtraTreeClassifier(),
+        # Ensemble
+        "RF": RandomForestClassifier(),
+        "BAG": BaggingClassifier(),
+        "GBM": GradientBoostingClassifier(),
+        "HIST": HistGradientBoostingClassifier(),
+        "Adaboost": AdaBoostClassifier(),
+        "XGBoost": XGBClassifier(use_label_encoder=False, device="cuda"),
+        "LightGBM": LGBMClassifier(verbose=-1, device="gpu"),
+        "Catboost": CatBoostClassifier(verbose=False, task_type="GPU", devices='0:1'),
+        "MLP": MLPClassifier()
+    }
+
+    regressors = {
+        # Naive Bayes
+        # "GNB": GaussianNB(),
+        # "MNB": MultinomialNB
+        # "CNB": ComplementNB(),
+        # "BNB": BernoulliNB(),
+        # "CATNB": CategoricalNB(),
+        # Gaussian Process
+        "GPR": GaussianProcessRegressor(),
+        # Linear Model
+        "LiR": LinearRegression(),
+        # "LR": LogisticRegression(),
+        "SGD": SGDRegressor(),
+        "RID": Ridge(),
+        "LAS": Lasso(),
+        "ENET": ElasticNet(),
+        # Support Vector Machines
+        "SVR": SVR(),
+        "NUSVR": NuSVR(),
+        "LSVR": LinearSVR(),
+        # Neighbors
+        "KNN": KNeighborsRegressor(),
+        # "NECEN": NearestCentroid(),
+        # "RANER": RadiusNeighborsRegressor(),
+        # Tree
+        "CART": DecisionTreeRegressor(),
+        "EXTR": ExtraTreeRegressor(),
+        # Ensemble
+        "RF": RandomForestRegressor(),
+        "BAG": BaggingRegressor(),
+        "GBM": GradientBoostingRegressor(),
+        "HIST": HistGradientBoostingRegressor(),
+        "Adaboost": AdaBoostRegressor(),
+        "XGBoost": XGBRegressor(use_label_encoder=False, device="cuda"),
+        "LightGBM": LGBMRegressor(verbose=-1, device="gpu"),
+        "Catboost": CatBoostRegressor(verbose=False, task_type="GPU", devices='0:1'),
+        "MLP": MLPRegressor()
+    }
+
+    models = classifiers if is_classifier else regressors
+
+    results_list = []
+
+    for name, model in models.items():
+        print(f"################## {name} ################## ")
+        for score_param in scoring:
+            try:
+                cv_results = cross_validate(model, X, y, cv=cv, scoring=score_param, error_score="raise")['test_score'].mean()
+                score = abs(round(cv_results, 4))
+                print(f"{score_param}: {score} ({name}) ")
+                results_list.append({"model": name, "scoring": f"{score_param}-{y.name}", "result": score})
+            except ValueError as e:
+                print(f"Error with model {name} and scoring {score_param}: {e}")
+        print()
+
+    results_df = pd.DataFrame(results_list)
+
+    if csv_result:
+        results_df.to_csv(file_name, index=False)
+        print(f"Results saved to {file_name}")
+
+    if return_results:
+        return results_df
 
 
 def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=True, is_grid_search=True,
@@ -864,9 +985,9 @@ def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=Tru
             ("GBM", GradientBoostingClassifier(), gbm_params),
             ("HIST", HistGradientBoostingClassifier(), hist_params),
             ("ADABoost", AdaBoostClassifier(), ada_params),
-            ("XGBoost", XGBClassifier(use_label_encoder=False, eval_metric='logloss'), xboost_params),
-            ("LightGBM", LGBMClassifier(verbose=-1), lightgbm_params),
-            ("Catboost", CatBoostClassifier(), cat_params),
+            ("XGBoost", XGBClassifier(use_label_encoder=False, device="cuda"), xboost_params),
+            ("LightGBM", LGBMClassifier(verbose=-1, device='gpu'), lightgbm_params),
+            ("Catboost", CatBoostClassifier(task_type="GPU", devices="0"), cat_params),
             # Neural Networks
             ("MLP",MLPClassifier(),mlp_params)
         ]
@@ -936,7 +1057,7 @@ def base_multiclass_models(X, y, cv=5, scoring=["accuracy", "precision_macro", "
     :param cv: int
         5
     :param scoring:
-        ["accuracy", "precision_macro", "recall_macro", "f1_macro", "roc_auc_ovo", "roc_auc_ovr"]
+        ["precision_macro","recall_macro","f1_macro","roc_auc_ovr"]
         https://scikit-learn.org/stable/modules/model_evaluation.html#scoring
     """
     warnings.filterwarnings("ignore", category=FutureWarning)
@@ -984,7 +1105,6 @@ def base_multiclass_models(X, y, cv=5, scoring=["accuracy", "precision_macro", "
             print(f"{score_param}: {round(cv_results['test_score'].mean(), 4)} ({name}) ")
 
         print()
-
 
 def hyperparameter_multiclass_optimization(X, y, cv=5, scoring="roc_auc_ovr", is_grid_search=True):
     """
