@@ -763,11 +763,11 @@ def base_models(X, y, cv=5, scoring=None, is_classifier=True, return_results=Fal
         print(f"################## {name} ################## ")
         for score_param in scoring:
             try:
-                cv_results = cross_validate(model, X, y, cv=cv, scoring=score_param, error_score="raise")['test_score'].mean()
+                cv_results = cross_validate(model, X, y, cv=cv, scoring=score_param, error_score="raise")['test_score'].mean() 
                 score = abs(round(cv_results, 4))
                 print(f"{score_param}: {score} ({name}) ")
                 results_list.append({"model": name, "scoring": f"{score_param}-{y.name}", "result": score})
-            except ValueError as e:
+            except Exception as e:
                 print(f"Error with model {name} and scoring {score_param}: {e}")
         print()
 
@@ -965,8 +965,8 @@ def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=Tru
             ## ("GPC", GaussianProcessClassifier(), gp_params),
             # Linear Model
             # ("LiR",LinearRegression(),lir_params),
-            ("LR", LogisticRegression(max_iter=10000), lr_params),
-            ("SGD", SGDClassifier(loss='log_loss'), sgd_params),
+            ("LR", LogisticRegression(), lr_params),
+            ("SGD", SGDClassifier(), sgd_params),
             # ("RID",Ridge(),rid_params),
             # ("LAS",Lasso(), las_params),
             # ("ENET",ElasticNet(), enet_params),
@@ -1041,8 +1041,7 @@ def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=Tru
             s_best = RandomizedSearchCV(model, params, cv=cv, n_jobs=-1, verbose=False).fit(X, y)
         final_model = model.set_params(**s_best.best_params_)
 
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.20, random_state=random_state)
-        cv_results = cross_validate(final_model, X_train, y_train, cv=cv, scoring=scoring)
+        cv_results = cross_validate(final_model, X, y, cv=cv, scoring=scoring)
         print(f"{scoring} (After): {round(cv_results['test_score'].mean(), 4)}")
         print(f"{name} best params: {s_best.best_params_}", end="\n\n")
         best_models[name] = final_model
@@ -1050,7 +1049,7 @@ def hyperparameter_optimization(X, y, cv=5, scoring="roc_auc", is_classifier=Tru
     return best_models
 
 
-def base_multiclass_models(X, y, cv=5, scoring=["accuracy", "precision_macro", "recall_macro", "f1_macro", "roc_auc_ovo", "roc_auc_ovr"]):
+def _base_multiclass_models(X, y, cv=5, scoring=["accuracy", "precision_macro", "recall_macro", "f1_macro", "roc_auc_ovo", "roc_auc_ovr"]):
     """
     :param X:
     :param y:
@@ -1105,6 +1104,84 @@ def base_multiclass_models(X, y, cv=5, scoring=["accuracy", "precision_macro", "
             print(f"{score_param}: {round(cv_results['test_score'].mean(), 4)} ({name}) ")
 
         print()
+
+def base_multiclass_models(X, y, cv=5, scoring=None, return_results=False, csv_result=False, file_name="multiclass_results.csv"):
+    """
+    :param X: pd.DataFrame, features
+    :param y: pd.Series, target
+    :param cv: int, cross-validation splitting strategy
+    :param scoring: list, scoring metrics to use
+    :param return_results: boolean, if True return results DataFrame
+    :param csv_result: boolean, if True save results to CSV
+    :param file_name: str, file name for the CSV results
+    :return: pd.DataFrame, results DataFrame if return_results is True
+    """
+    if scoring is None:
+        scoring = ["accuracy", "precision_macro", "recall_macro", "f1_macro", "roc_auc_ovo", "roc_auc_ovr"]
+
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    warnings.filterwarnings("ignore", category=UserWarning)
+    warnings.filterwarnings("ignore", category=ConvergenceWarning)
+    warnings.filterwarnings("ignore", category=FitFailedWarning)
+
+    print("Base Multiclass Models....")
+
+    models = {
+        # Naive Bayes
+        "GNB": GaussianNB(),
+        # "MNB": MultinomialNB(),  # not usable with negative values
+        # "CNB": ComplementNB(),  # not usable with negative values
+        # "BNB": BernoulliNB(),  # not usable with negative values
+        # "CATNB": CategoricalNB(),  # not usable with negative values
+        # Gaussian Process
+        # "GPC": GaussianProcessClassifier(),  # takes too long, not useful
+        # Linear Model
+        "LR": LogisticRegression(),
+        "SGD": SGDClassifier(), # getting error with roc_auc_ovo
+        # Support Vector Machines
+        # "SVC": SVC(probability=True),  # takes too long sometimes
+        # "NUSVC": NuSVC(probability=True),  # takes too long sometimes
+        "LSVC": LinearSVC(),
+        # Neighbors
+        "KNN": KNeighborsClassifier(),
+        # Tree
+        "CART": DecisionTreeClassifier(),
+        "EXTR": ExtraTreeClassifier(),
+        # Ensemble
+        "RF": RandomForestClassifier(),
+        "BAG": BaggingClassifier(),
+        "GBM": GradientBoostingClassifier(),
+        "HIST": HistGradientBoostingClassifier(),
+        "Adaboost": AdaBoostClassifier(),
+        "XGBoost": XGBClassifier(use_label_encoder=False, device="cuda"),
+        "LightGBM": LGBMClassifier(verbose=-1, device="gpu"),
+        "Catboost": CatBoostClassifier(verbose=False, devices="gpu"),
+        # Neural Networks
+        "MLP": MLPClassifier()
+    }
+
+    results_list = []
+
+    for name, model in models.items():
+        print(f"################## {name} ################## ")
+        for score_param in scoring:
+            try:
+                cv_results = cross_validate(model, X, y, cv=cv, scoring=score_param, error_score="raise") 
+                score = abs(round(cv_results['test_score'].mean(), 4))
+                print(f"{score_param}: {score} ({name}) ")
+                results_list.append({"model": name, "scoring": f"{score_param}-{y.name}", "result": score})
+            except Exception as e:
+                print(f"Error with model {name} and scoring {score_param}: {e}")
+        print()
+
+    results_df = pd.DataFrame(results_list)
+
+    if csv_result:
+        results_df.to_csv(file_name, index=False)
+        print(f"Results saved to {file_name}")
+
+    if return_results:
+        return results_df
 
 def hyperparameter_multiclass_optimization(X, y, cv=5, scoring="roc_auc_ovr", is_grid_search=True):
     """
