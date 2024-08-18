@@ -470,7 +470,7 @@ def rare_analyser(dataframe: pd.DataFrame, target: str, cat_cols: list):
                             "TARGET_MEAN": dataframe.groupby(col)[target].mean()}), end="\n\n")
         print("-"*20)
 
-def rare_encoder(dataframe: pd.DataFrame, rare_perc):
+def rare_encoder(dataframe: pd.DataFrame, rare_perc, label=-1):
     """
     :param dataframe: pandas.DataFrame
     :param rare_perc: float - int
@@ -478,12 +478,12 @@ def rare_encoder(dataframe: pd.DataFrame, rare_perc):
     """
     temp_df = dataframe.copy()
     rare_columns = [col for col in temp_df.columns if temp_df[col].dtypes == "O" and
-                    (temp_df.value_counts() / len(temp_df) < rare_perc).any(axis=None)]
+                    100 * (temp_df.value_counts() / len(temp_df) < rare_perc).any(axis=None)]
 
     for var in rare_columns:
-        tmp = temp_df[var].value_counts() / len(temp_df)
+        tmp = 100 * temp_df[var].value_counts() / len(temp_df)
         rare_labels = tmp[tmp < rare_perc].index
-        temp_df[var] = np.where(temp_df[var].isin(rare_labels), 'Rare', temp_df[var])
+        temp_df[var] = np.where(temp_df[var].isin(rare_labels), label, temp_df[var])
 
     return temp_df
 
