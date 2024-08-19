@@ -6,8 +6,7 @@ This Python script provides a comprehensive collection of functions and utilitie
 1. [Installation](#installation)
 2. [Features](#features)
 3. [Usage](#usage)
-4. [Contributing](#contributing)
-5. [License](#license)
+4. [License](#license)
 
 ## Installation
 
