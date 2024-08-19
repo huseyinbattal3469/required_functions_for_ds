@@ -57,10 +57,6 @@ check_df(df)
 cat_cols, num_cols, cat_but_car = grab_col_names(df)
 ```
 
-## Contributing
-
-Contributions are welcome! If you have any improvements or additional functions to add, feel free to fork this repository and submit a pull request.
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
