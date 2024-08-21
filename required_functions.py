@@ -68,14 +68,206 @@ warnings.filterwarnings("ignore", category=ConvergenceWarning)
 pd.set_option('display.max_columns', None)
 pd.set_option("display.width", 500)
 
+############# Statistics
+import pandas_ta as ta
+from scipy.stats import shapiro, mannwhitneyu, ttest_ind, levene
 
 ################ Etc.
-
+def create_date_features(df: pd.DataFrame, dt_var: str):
+    """
+    Create date features from a given DataFrame and datetime variable.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        The DataFrame containing the datetime variable.
+    dt_var : str
+        The name of the datetime variable in the DataFrame.
+    
+    Returns:
+    --------
+    pd.DataFrame
+        The original DataFrame with additional date features.
+    """
+    df['month'] = df[dt_var].dt.month
+    df['day_of_month'] = df[dt_var].dt.day
+    df['day_of_year'] = df[dt_var].dt.dayofyear
+    df['week_of_year'] = df[dt_var].dt.isocalendar().week
+    df['day_of_week'] = df[dt_var].dt.dayofweek
+    df['is_wknd'] = df[dt_var].dt.weekday // 4
+    df['is_month_start'] = df[dt_var].dt.is_month_start.astype(int)
+    df['is_month_end'] = df[dt_var].dt.is_month_end.astype(int)
+    return df
 ################ Etc.
+
+################ Statistics
+def hypothesis_test(df, col1, col2): 
+    """
+    This function performs a hypothesis test for the given two columns in the given dataframe.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The dataframe containing the two columns to be compared.
+    col1 : str
+        The name of the first column.
+    col2 : str
+        The name of the second column.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    First, it performs a normality test for each column using the Shapiro-Wilk test.
+    If both columns are normally distributed, then it performs a Levene's test for equal variances.
+    If the variances are equal, then it performs a t-test.
+    If the variances are not equal, then it performs a t-test with unequal variances.
+    If one or both of the columns are not normally distributed, then it performs a Mann-Whitney U test.
+    """
+    
+    threshold = 0.05
+    print(df.columns)
+    
+    # Normallik testi
+    print("############ NORMALITY TEST OF {} ############".format(col1))
+    _, pvalue_col1 = shapiro(df[col1])
+    print('{} p-value: {:.3f}'.format(col1, pvalue_col1))
+    col1_normal = pvalue_col1 > threshold
+    
+    if col1_normal:
+        print('{} is normally distributed'.format(col1))
+    else:
+        print('{} is not normally distributed'.format(col1))
+
+    print("############ NORMALITY TEST OF {} ############".format(col2))
+    _, pvalue_col2 = shapiro(df[col2])
+    print('{} p-value: {:.3f}'.format(col2, pvalue_col2))
+    col2_normal = pvalue_col2 > threshold
+    
+    if col2_normal:
+        print('{} is normally distributed'.format(col2))
+    else:
+        print('{} is not normally distributed'.format(col2))
+    
+    # Varyans homojenliği testi
+    print("############ VARIANCE HOMOGENEITY TEST ############")
+    _, pvalue_variance = levene(df[col1], df[col2])
+    print('p-value of Levene test: {:.3f}'.format(pvalue_variance))
+    equal_variance = pvalue_variance > threshold
+    
+    if equal_variance:
+        print('Variances are equal')
+    else:
+        print('Variances are not equal')
+
+    # Hipotez testi
+    if not col1_normal or not col2_normal:
+        print("############ MANN-WHITNEY U TEST ############")
+        _, pvalue = mannwhitneyu(df[col1], df[col2])
+        print('p-value of Mann-Whitney U non-parametric test: {:.3f}'.format(pvalue))
+        if pvalue < threshold:
+            print("Reject the null hypothesis: There is a significant difference between the two groups.")
+        else:
+            print("Fail to reject the null hypothesis: There is no significant difference between the two groups.")
+    elif col1_normal and col2_normal and not equal_variance:
+        print("############ T-TEST with UNEQUAL VARIANCES ############")
+        _, pvalue = ttest_ind(df[col1], df[col2], equal_var=False)
+        print('p-value of t-test: {:.3f}'.format(pvalue))
+        if pvalue < threshold:
+            print("Reject the null hypothesis: There is a significant difference between the means of the two groups.")
+        else:
+            print("Fail to reject the null hypothesis: There is no significant difference between the means of the two groups.")
+    else:
+        print("############ T-TEST ############")
+        _, pvalue = ttest_ind(df[col1], df[col2], equal_var=True)
+        print('p-value of t-test: {:.3f}'.format(pvalue))
+        if pvalue < threshold:
+            print("Reject the null hypothesis: There is a significant difference between the means of the two groups.")
+        else:
+            print("Fail to reject the null hypothesis: There is no significant difference between the means of the two groups.")
+
+def feature_engineering_stock_prices(df:pd.DataFrame, high:pd.Series, low:pd.Series, open:pd.Series, close:pd.Series):
+    
+    """
+    This function takes in a pandas DataFrame, high, low, open, and close price series. 
+    It performs feature engineering on the data and returns a new DataFrame with the 
+    following features: 
+    
+    1. diff_close_open: difference between close price and open price.
+    2. diff_high_low: difference between high price and low price.
+    3. open_close_perc_change: difference between close price and open price divided by open price multiplied by 100.
+    4. RSI: Relative Strength Index.
+    5. EMAF: Exponential Moving Average with length 20.
+    6. EMAM: Exponential Moving Average with length 100.
+    7. EMAS: Exponential Moving Average with length 150.
+    8. MACD: Moving Average Convergence Divergence.
+    9. Bollinger Bands.
+    10. Stochastic Oscillator.
+    11. Williams %R.
+    12. close_ewm_alpha: Exponential Moving Average with different alphas.
+    13. next: next closing price.
+    
+    Parameters:
+    df (pd.DataFrame): A pandas DataFrame containing the following columns:
+        - high (pd.Series): high price series.
+        - low (pd.Series): low price series.
+        - open (pd.Series): open price series.
+        - close (pd.Series): close price series.
+        
+    Returns:
+    pd.DataFrame: A pandas DataFrame with the features mentioned above.
+    """
+    alphas = np.arange(0.1, 1.0, step=0.1)
+
+    diff_close_open = close - open
+    df["diff_close_open"] = diff_close_open
+
+    diff_high_low = high - low
+    df["diff_high_low"] = diff_high_low
+
+    open_close_perc_change = diff_close_open / open * 100
+    df["open_close_perc_change"] = open_close_perc_change
+
+    df["RSI"] = ta.rsi(close, length=15)
+    df["EMAF"] = ta.ema(close, length=20)
+    df["EMAM"] = ta.ema(close, length=100)
+    df["EMAS"] = ta.ema(close, length=150)
+    macd = ta.macd(close, fast=12, slow=26, signal=9)
+    bbands = ta.bbands(close, length=20, std=2)
+    stoch = ta.stoch(high, low, close)
+    for col in macd.columns:
+        df[col] = macd[col]
+
+    for col in bbands.columns:
+        df[col] = bbands[col]
+
+    for col in stoch.columns:
+        df[col] = stoch[col]
+
+    df['Williams_%R'] = ta.willr(high ,low, close)
+
+    for alpha in alphas:
+        df[f"close_ewm_{alpha:.1f}".replace(".","")] = close.ewm(alpha=alpha).mean() # Exponential Moving Average with ALPHAS
+
+    df["next"] = close.shift(-1)
+
+    return df
+
+################ Statistics
 
 ################ Explonatory Data Analysis
 
 def check_df(dataframe: pd.DataFrame, head=5):
+    """
+    Prints out important statistics of a given DataFrame.
+
+    Parameters:
+    dataframe (pd.DataFrame): The DataFrame to be inspected.
+    head (int): The number of rows to be printed out for head and tail.
+    """
+    
     print('##################### Shape #####################')
     print(dataframe.shape)
     print('##################### Types #####################')
@@ -92,7 +284,6 @@ def check_df(dataframe: pd.DataFrame, head=5):
 
 def grab_col_names(dataframe: pd.DataFrame, cat_th=10, car_th=20):
     """
-
     :param dataframe:
         pandas.DataFrame object
     :param cat_th:
