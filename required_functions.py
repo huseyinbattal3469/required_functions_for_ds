@@ -251,7 +251,7 @@ def feature_engineering_stock_prices(df:pd.DataFrame, high:pd.Series, low:pd.Ser
     for alpha in alphas:
         df[f"close_ewm_{alpha:.1f}".replace(".","")] = close.ewm(alpha=alpha).mean() # Exponential Moving Average with ALPHAS
 
-    df["next"] = close.shift(-1)
+    # df["next"] = close.shift(-1)
 
     return df
 
